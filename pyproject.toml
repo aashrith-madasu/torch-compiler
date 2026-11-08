@@ -13,4 +13,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["compiler", "compiler.optimization"]
+packages = ["fusion"]

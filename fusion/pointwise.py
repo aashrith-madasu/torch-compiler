@@ -27,6 +27,11 @@ POINTWISE_OPS = {
     aten.maximum.default: lambda a, b: f"tl.maximum({a}, {b})",
     aten.minimum.default: lambda a, b: f"tl.minimum({a}, {b})",
     aten._to_copy.default: lambda a: a,
+    aten.pow.Tensor_Scalar: lambda a, b: (
+        " * ".join([a] * int(float(b)))
+        if float(b).is_integer() and 1 <= float(b) <= 4
+        else f"tl.extra.cuda.libdevice.pow({a}, {b})"
+    ),
 }
 
 # Composite ops we break down into the primitives above so they can fuse.
@@ -187,16 +192,13 @@ def load_kernel(name, source):
 
 
 def build_fused_op(group, inputs):
-    name = new_kernel_name("fused")
+    name = new_kernel_name("fused_pointwise")
 
     out_meta = _tensor_meta(group[-1])
     shape, dtype = tuple(out_meta.shape), out_meta.dtype
     rank = len(shape)
     source = generate_kernel_source(name, group, inputs, rank)
     kernel = load_kernel(name, source)
-
-    # ops = " -> ".join(str(n.target) for n in group)
-    # print(f"\n--- {name}: {ops}\n{source}")
 
     def fused_op(*tensors):
         out = torch.empty(shape, dtype=dtype, device=tensors[0].device)
@@ -212,12 +214,13 @@ def build_fused_op(group, inputs):
 
 def fuse_pointwise(gm: fx.GraphModule) -> fx.GraphModule:
     groups = find_fusion_groups(gm.graph)
+    print("========== Fusion groups =============")
     for group in groups:
         if len(group) < 2:  # fusing a single op gains nothing; leave it to ATen
             continue
         inputs = external_inputs(group)
         fused_op = build_fused_op(group, inputs)
-
+        
         root = group[-1]
         with gm.graph.inserting_before(root):
             new_node = gm.graph.call_function(fused_op, tuple(inputs))
@@ -225,6 +228,11 @@ def fuse_pointwise(gm: fx.GraphModule) -> fx.GraphModule:
         root.replace_all_uses_with(new_node)
         for n in reversed(group):  # consumers before producers
             gm.graph.erase_node(n)
+        
+        print(f"{','.join(n.name for n in group)} --> {fused_op.__name__}"
+              f"   (reads: {', '.join(n.name for n in inputs)})")
+
+
 
     gm.graph.lint()
     gm.recompile()
