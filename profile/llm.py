@@ -29,21 +29,24 @@ if __name__ == "__main__":
         model.eval()
         model_fused = torch.compile(model, 
                                     backend=aot_autograd(fw_compiler=fusion_compiler))
+        model_ind = torch.compile(model)
         input_ids = torch.randint(
             low=0, 
             high=config.vocab_size,
-            size=(8, 1024)
+            size=(32, 1024)
         )
 
     with torch.no_grad():
         # ======= Triton Profiling ==============
         eager_ms = triton.testing.do_bench(lambda: model(input_ids))
         fused_ms = triton.testing.do_bench(lambda: model_fused(input_ids))
+        ind_ms = triton.testing.do_bench(lambda: model_ind(input_ids))
         
-        print(
-            f"\neager: {eager_ms:.3f} ms"
-            f"\nfused: {fused_ms:.3f} ms"
-            f"\nspeed up: {eager_ms/fused_ms:.3f}x"
-        )
+        data = [(eager_ms, "eager"), (fused_ms, "fused"), (ind_ms, "inductor")]
+        data = sorted(data)
+        
+        print("\n", "="*20 , "Results", "="*20)
+        for ms, label in data:
+            print(f"{label}: {ms:.3f} ms ({eager_ms/ms:.2f}x speed up)")
 
     

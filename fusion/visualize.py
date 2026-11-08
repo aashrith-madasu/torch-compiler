@@ -4,7 +4,7 @@ import torch.fx as fx
 
 def _op_name(target) -> str:
     if isinstance(target, torch._ops.OpOverload):
-        return str(target).removeprefix("aten.")  # e.g. "mul.Tensor"
+        return str(target)  # e.g. "mul.Tensor"
     return getattr(target, "__name__", str(target))  # e.g. "fused_3"
 
 

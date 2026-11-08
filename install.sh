@@ -1,3 +1,5 @@
 #/usr/bin/bash
 
-pip install --extra-index-url https://download.pytorch.org/whl/cu124 -e .
+FLAGS = "--extra-index-url https://download.pytorch.org/whl/cu124"
+
+pip install $FLAGS -e .

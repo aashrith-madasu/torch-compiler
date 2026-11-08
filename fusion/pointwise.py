@@ -1,10 +1,9 @@
-import importlib.util
 import os
-import tempfile
-
 import torch
 import torch.fx as fx
 import triton
+
+from fusion.codegen import load_kernel, new_kernel_name, tensor_meta
 
 aten = torch.ops.aten
 
@@ -32,25 +31,17 @@ POINTWISE_OPS = {
         if float(b).is_integer() and 1 <= float(b) <= 4
         else f"tl.extra.cuda.libdevice.pow({a}, {b})"
     ),
+    aten.clone.default: lambda a: a,
 }
 
 # Composite ops we break down into the primitives above so they can fuse.
-
-
-KERNEL_DIR = tempfile.mkdtemp(prefix="fused_kernels_")
-_kernel_counter = 0
-
-
-def _tensor_meta(node):
-    val = node.meta.get("val") if isinstance(node, fx.Node) else None
-    return val if isinstance(val, torch.Tensor) else None
 
 
 def _is_float_cast(node: fx.Node) -> bool:
     """A plain dtype conversion between floats that fit in fp32. A cast below
     fp32 must end its group: only tl.store actually rounds to the output
     dtype, so ops after it in the kernel would see the unrounded value."""
-    src, dst = _tensor_meta(node.args[0]), _tensor_meta(node)
+    src, dst = tensor_meta(node.args[0]), tensor_meta(node)
     return (
         set(node.kwargs) == {"dtype"}
         and src is not None
@@ -69,7 +60,7 @@ def _is_fusible(node: fx.Node) -> bool:
             return False
     elif node.kwargs:
         return False
-    val = _tensor_meta(node)
+    val = tensor_meta(node)
     return (
         val is not None
         and val.is_cuda
@@ -98,7 +89,7 @@ def find_fusion_groups(graph: fx.Graph) -> list[list[fx.Node]]:
         if (
             group is not None
             and all(g is group for g in consumer_groups)
-            and _tensor_meta(node).shape == _tensor_meta(group[0]).shape
+            and tensor_meta(node).shape == tensor_meta(group[0]).shape
         ):
             group.append(node)
         else:
@@ -174,27 +165,10 @@ def generate_kernel_source(name, group, inputs, rank):
     return "\n".join(lines) + "\n"
 
 
-def new_kernel_name(prefix):
-    global _kernel_counter
-    _kernel_counter += 1
-    return f"{prefix}_{_kernel_counter - 1}"
-
-
-def load_kernel(name, source):
-    # triton.jit needs the source to live in a real file (it uses inspect).
-    path = os.path.join(KERNEL_DIR, f"{name}.py")
-    with open(path, "w") as f:
-        f.write(source)
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return getattr(module, name)
-
-
 def build_fused_op(group, inputs):
     name = new_kernel_name("fused_pointwise")
 
-    out_meta = _tensor_meta(group[-1])
+    out_meta = tensor_meta(group[-1])
     shape, dtype = tuple(out_meta.shape), out_meta.dtype
     rank = len(shape)
     source = generate_kernel_source(name, group, inputs, rank)
@@ -214,7 +188,10 @@ def build_fused_op(group, inputs):
 
 def fuse_pointwise(gm: fx.GraphModule) -> fx.GraphModule:
     groups = find_fusion_groups(gm.graph)
-    print("========== Fusion groups =============")
+    
+    if os.getenv("FUSION_KERNEL_DEBUG"):
+        print("========== Fusion groups =============")
+        
     for group in groups:
         if len(group) < 2:  # fusing a single op gains nothing; leave it to ATen
             continue
@@ -229,8 +206,9 @@ def fuse_pointwise(gm: fx.GraphModule) -> fx.GraphModule:
         for n in reversed(group):  # consumers before producers
             gm.graph.erase_node(n)
         
-        print(f"{','.join(n.name for n in group)} --> {fused_op.__name__}"
-              f"   (reads: {', '.join(n.name for n in inputs)})")
+        if os.getenv("FUSION_KERNEL_DEBUG"):
+            print(f"{','.join(n.name for n in group)} --> {fused_op.__name__}"
+                f"   (reads: {', '.join(n.name for n in inputs)})")
 
 
 

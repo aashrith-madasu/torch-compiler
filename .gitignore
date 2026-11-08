@@ -1,4 +1,6 @@
 .vscode/
 __pycache__/
 *.egg-info/
-notes.md
+*.nsys-rep
+generated_kernels/
+log*.txt
