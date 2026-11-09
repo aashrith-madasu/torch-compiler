@@ -37,7 +37,7 @@ def remove_redundant_clones(gm: fx.GraphModule) -> fx.GraphModule:
             node.replace_all_uses_with(node.args[0])
             gm.graph.erase_node(node)
 
-    if os.getenv("FUSION_KERNEL_DEBUG"):
+    if os.getenv("KERNEL_FUSION_DEBUG"):
         print("========== Clone cleanup =============")
         print(f"removed {len(removed)} clones: {', '.join(removed)}")
 

@@ -185,7 +185,7 @@ def build_fused_op(group, mm_input, others):
 # -------------------------------------------------------------------- pass
 
 def fuse_epilogue(gm: fx.GraphModule) -> fx.GraphModule:
-    if os.getenv("FUSION_KERNEL_DEBUG"):
+    if os.getenv("KERNEL_FUSION_DEBUG"):
         print("========== Epilogue fusion =============")
         
     for group in find_fusion_groups(gm.graph):
@@ -207,7 +207,7 @@ def fuse_epilogue(gm: fx.GraphModule) -> fx.GraphModule:
             gm.graph.erase_node(view)
         gm.graph.erase_node(mm)
 
-        if os.getenv("FUSION_KERNEL_DEBUG"):
+        if os.getenv("KERNEL_FUSION_DEBUG"):
             print(f"{mm.name},{','.join(n.name for n in group)} --> {fused_op.__name__}"
                 f"   (reads: {', '.join(n.name for n in new_node.args)})")
 

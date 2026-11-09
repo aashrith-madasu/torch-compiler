@@ -189,7 +189,7 @@ def build_fused_op(group, inputs):
 def fuse_pointwise(gm: fx.GraphModule) -> fx.GraphModule:
     groups = find_fusion_groups(gm.graph)
     
-    if os.getenv("FUSION_KERNEL_DEBUG"):
+    if os.getenv("KERNEL_FUSION_DEBUG"):
         print("========== Fusion groups =============")
         
     for group in groups:
@@ -206,7 +206,7 @@ def fuse_pointwise(gm: fx.GraphModule) -> fx.GraphModule:
         for n in reversed(group):  # consumers before producers
             gm.graph.erase_node(n)
         
-        if os.getenv("FUSION_KERNEL_DEBUG"):
+        if os.getenv("KERNEL_FUSION_DEBUG"):
             print(f"{','.join(n.name for n in group)} --> {fused_op.__name__}"
                 f"   (reads: {', '.join(n.name for n in inputs)})")
 
