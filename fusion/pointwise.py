@@ -23,6 +23,10 @@ POINTWISE_OPS = {
     aten.erf.default: lambda a: f"tl.erf({a})",
     aten.sigmoid.default: lambda a: f"tl.sigmoid({a})",
     aten.tanh.default: lambda a: f"(2.0 * tl.sigmoid(2.0 * {a}) - 1.0)",
+    aten.silu.default: lambda a: f"({a} * tl.sigmoid({a}))",
+    # Exact GELU only: the tanh version has an `approximate` kwarg, and
+    # _is_fusible rejects nodes with kwargs.
+    aten.gelu.default: lambda a: f"(0.5 * {a} * (1.0 + tl.erf({a} * 0.7071067811865476)))",
     aten.maximum.default: lambda a, b: f"tl.maximum({a}, {b})",
     aten.minimum.default: lambda a, b: f"tl.minimum({a}, {b})",
     aten._to_copy.default: lambda a: a,
