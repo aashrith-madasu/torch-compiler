@@ -4,3 +4,4 @@ __pycache__/
 *.nsys-rep
 generated_kernels/
 log*.txt
+.venv*/
